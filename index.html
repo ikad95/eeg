@@ -1,0 +1,1846 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>EEG Dashboard</title>
+  <style>
+    :root {
+      --bg-primary: #121212;
+      --bg-secondary: #1e1e1e;
+      --bg-tertiary: #2d2d2d;
+      --text-primary: #e0e0e0;
+      --text-secondary: #b0b0b0;
+      --text-muted: #707070;
+      --border-color: #404040;
+      --accent-color: #00b3b3;
+      --accent-hover: #00d6d6;
+      --status-connected: #4CAF50;
+      --status-disconnected: #F44336;
+      --chart-line: #00d6d6;
+      --chart-raw-line: #707070;
+      --chart-grid: #353535;
+      --band-bg: #252525;
+      --band-active: rgba(0, 179, 179, 0.3);
+    }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      margin: 0;
+      padding: 15px;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 15px;
+    }
+
+    h2 {
+      margin-top: 0;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .chart-container {
+      width: 100%;
+      height: 300px;
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      margin-bottom: 15px;
+      position: relative;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .controls {
+      padding: 10px;
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      border-radius: 4px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      margin-right: 15px;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+
+    .connected {
+      background-color: var(--status-connected);
+    }
+
+    .disconnected {
+      background-color: var(--status-disconnected);
+    }
+
+    button {
+      padding: 5px 10px;
+      margin: 5px;
+      font-size: 14px;
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: var(--border-color);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    input, select {
+      padding: 5px 8px;
+      margin: 5px;
+      font-size: 14px;
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+    }
+
+    input[type="checkbox"] {
+      margin: 0 5px;
+      accent-color: var(--accent-color);
+    }
+
+    .filter-group {
+      margin: 0 10px;
+      display: flex;
+      align-items: center;
+    }
+
+    .scale-control {
+      display: flex;
+      flex-direction: column;
+      margin: 0 10px;
+      min-width: 120px;
+    }
+
+    .scale-slider {
+      display: flex;
+      align-items: center;
+    }
+
+    .scale-slider span {
+      min-width: 30px;
+      text-align: center;
+      color: var(--text-secondary);
+    }
+
+    label {
+      margin-right: 5px;
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    #debugInfo {
+      font-family: monospace;
+      background-color: var(--bg-secondary);
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+    }
+
+    .axis-label {
+      position: absolute;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    #yAxisLabel {
+      transform: rotate(-90deg);
+      left: -30px;
+      top: 50%;
+    }
+
+    #xAxisLabel {
+      bottom: -5px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    /* Band display styles */
+    .band-container {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 15px;
+    }
+
+    .band-card {
+      flex: 1;
+      background-color: var(--band-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 8px;
+      margin: 0 5px;
+      text-align: center;
+      transition: background-color 0.3s;
+    }
+
+    .band-card.active {
+      background-color: var(--band-active);
+      border-color: var(--accent-color);
+    }
+
+    .band-name {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: var(--text-primary);
+    }
+
+    .band-value {
+      font-size: 20px;
+      font-weight: bold;
+      color: var(--text-primary);
+    }
+
+    .band-info {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 5px;
+    }
+
+    #fftInfo {
+      font-family: monospace;
+      font-size: 14px;
+      white-space: pre;
+      padding: 10px;
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      height: 5px;
+      background: var(--bg-tertiary);
+      border-radius: 5px;
+      margin: 0 10px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: var(--accent-color);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: var(--accent-color);
+      cursor: pointer;
+      border: none;
+    }
+
+    input[type="number"] {
+      width: 50px;
+    }
+
+    /* Added styles for the connection section */
+    .connection-info {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+    }
+
+    #autoConnectStatus {
+      margin-left: 10px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Added styles for dominant band label */
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    
+    .dominant-band {
+      text-align: left;
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--accent-color);
+      flex: 1;
+    }
+    
+    .blink-indicator {
+      text-align: right;
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--text-primary);
+      flex: 1;
+      transition: all 0.3s ease;
+    }
+    
+    .blink-indicator.active {
+      color: var(--accent-color);
+      animation: blink-pulse 0.5s ease;
+    }
+    
+    @keyframes blink-pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>EEG Dashboard</h2>
+    
+    <div class="controls">
+      <div class="status">
+        <span class="status-indicator disconnected" id="statusIndicator"></span>
+        <span id="connectionStatus">Disconnected</span>
+      </div>
+      
+      <input type="text" id="serverAddress" value="192.168.0.1" size="15" placeholder="ESP32 IP">
+      <button id="connectButton">Connect</button>
+      <button id="disconnectButton" disabled>Disconnect</button>
+      
+      <div class="connection-info">
+        <span id="autoConnectStatus"></span>
+      </div>
+    </div>
+
+    <!-- Band display cards -->
+    <div class="band-container" id="bandContainer">
+      <div class="band-card" id="deltaBand">
+        <div class="band-name">Delta</div>
+        <div class="band-value">0%</div>
+        <div class="band-info">0.5-4 Hz</div>
+      </div>
+      <div class="band-card" id="thetaBand">
+        <div class="band-name">Theta</div>
+        <div class="band-value">0%</div>
+        <div class="band-info">4-8 Hz</div>
+      </div>
+      <div class="band-card" id="alphaBand">
+        <div class="band-name">Alpha</div>
+        <div class="band-value">0%</div>
+        <div class="band-info">8-13 Hz</div>
+      </div>
+      <div class="band-card" id="betaBand">
+        <div class="band-name">Beta</div>
+        <div class="band-value">0%</div>
+        <div class="band-info">13-30 Hz</div>
+      </div>
+      <div class="band-card" id="gammaBand">
+        <div class="band-name">Gamma</div>
+        <div class="band-value">0%</div>
+        <div class="band-info">30+ Hz</div>
+      </div>
+    </div>
+    
+    <div class="info-row">
+      <div class="dominant-band" id="dominantBand">Waiting for data...</div>
+      <div class="blink-indicator" id="blinkIndicator">No blinks detected</div>
+    </div>
+    
+    <div class="controls">
+      <div class="filter-group">
+        <label for="highPass">High-pass:</label>
+        <input type="checkbox" id="highPass" checked>
+        <input type="number" id="highPassCutoff" min="0.1" max="20" step="0.1" value="0.5">Hz
+      </div>
+      
+      <div class="filter-group">
+        <label for="lowPass">Low-pass:</label>
+        <input type="checkbox" id="lowPass" checked>
+        <input type="number" id="lowPassCutoff" min="1" max="100" value="30">Hz
+      </div>
+      
+      <div class="filter-group">
+        <label for="notch">Notch:</label>
+        <input type="checkbox" id="notch">
+        <select id="notchFreq">
+          <option value="50">50Hz</option>
+          <option value="60" selected>60Hz</option>
+        </select>
+      </div>
+      
+      <div class="filter-group">
+        <label for="blinkDetection">Blink Detection:</label>
+        <input type="checkbox" id="blinkDetection" checked>
+        <input type="number" id="blinkThreshold" min="100" max="2000" step="50" value="800">µV
+      </div>
+    </div>
+    
+    <div class="controls">
+      <div class="scale-control">
+        <label>Y-Scale (Amplitude):</label>
+        <div class="scale-slider">
+          <span>1x</span>
+          <input type="range" id="yScale" min="1" max="10" value="3">
+          <span>10x</span>
+          <span id="yScaleValue">3x</span>
+        </div>
+      </div>
+      
+      <div class="scale-control">
+        <label>X-Scale (Time):</label>
+        <div class="scale-slider">
+          <span>1s</span>
+          <input type="range" id="xScale" min="1" max="10" value="3">
+          <span>10s</span>
+          <span id="xScaleValue">3s</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="chart-container">
+      <canvas id="eegCanvas"></canvas>
+      <div id="yAxisLabel" class="axis-label">Amplitude (µV)</div>
+      <div id="xAxisLabel" class="axis-label">Time (seconds)</div>
+    </div>
+    
+    <div id="debugInfo">Signal stats will appear here...</div>
+  </div>
+
+  <script>
+    // Configuration
+const config = {
+  sampleRate: 1000,       // Assumed sample rate (1kHz)
+  windowSeconds: 3,       // Initial window size (seconds)
+  maxBufferSize: 10000,   // Maximum buffer size (10 seconds at 1kHz)
+  displayPoints: 3000,    // Initial display points
+  baselineValue: 2048,    // ADC midpoint for 12-bit
+  yScale: 3,              // Y-axis scaling factor
+  skipPoints: 1,          // Point skipping for optimization (1 = no skipping)
+  filters: {
+    highPass: { enabled: true, cutoff: 0.5 },
+    lowPass: { enabled: true, cutoff: 30 },
+    notch: { enabled: false, frequency: 60 }
+  },
+  blinkDetection: {
+    enabled: true,         // Enable blink detection by default
+    threshold: 600,        // Default threshold in µV
+    cooldownMs: 500,       // Minimum time between blinks in ms
+    markBlinks: true,      // Mark blinks on the EEG trace
+    blinkDurationMs: 200,  // Typical blink duration in ms
+    excludeFromAnalysis: true // Exclude blinks from frequency analysis
+  },
+  frequencyAnalysis: {
+    intervalMs: 1000,      // Increased interval between analyses (1 second)
+    minDataPoints: 500     // Minimum data points required for analysis
+  }
+};
+
+// Simple circular buffer that doesn't grow over time
+class CircularBuffer {
+  constructor(size, defaultValue = 0) {
+    this.size = size;
+    this.data = new Array(size).fill(defaultValue);
+    this.pointer = 0;
+    this.filled = false;  // Track if buffer has been completely filled
+  }
+  
+  // Add new values and advance pointer
+  add(values) {
+    for(let i = 0; i < values.length; i++) {
+      this.data[this.pointer] = values[i];
+      this.pointer = (this.pointer + 1) % this.size;
+      
+      // Check if we've filled the buffer
+      if (this.pointer === 0) {
+        this.filled = true;
+      }
+    }
+  }
+  
+  // Get all values in order (oldest to newest)
+  getAll() {
+    // If buffer isn't filled, just return the actual data
+    if (!this.filled) {
+      return this.data.slice(0, this.pointer);
+    }
+    
+    // Reorder to get oldest to newest
+    const result = new Array(this.size);
+    for(let i = 0; i < this.size; i++) {
+      result[i] = this.data[(this.pointer + i) % this.size];
+    }
+    return result;
+  }
+  
+  // Get the last N values (most recent)
+  getLast(n) {
+    if (n <= 0) return [];
+    
+    const count = Math.min(n, this.filled ? this.size : this.pointer);
+    const result = new Array(count);
+    
+    for (let i = 0; i < count; i++) {
+      const idx = (this.pointer - count + i + this.size) % this.size;
+      result[i] = this.data[idx];
+    }
+    
+    return result;
+  }
+  
+  // Resize the buffer (preserving data where possible)
+  resize(newSize, defaultValue = 0) {
+    if (newSize === this.size) return;
+    
+    // Get current data in correct order
+    const currentData = this.getAll();
+    
+    // Create new buffer
+    this.size = newSize;
+    this.data = new Array(newSize).fill(defaultValue);
+    this.pointer = 0;
+    this.filled = false;
+    
+    // Copy data into new buffer (as much as will fit)
+    if (currentData.length > 0) {
+      // If we have more data than new size, take the most recent
+      const dataToKeep = currentData.length > newSize ? 
+                          currentData.slice(-newSize) : 
+                          currentData;
+      
+      this.add(dataToKeep);
+    }
+  }
+  
+  // Clear buffer
+  clear(defaultValue = 0) {
+    this.data = new Array(this.size).fill(defaultValue);
+    this.pointer = 0;
+    this.filled = false;
+  }
+}
+
+// Global state
+const state = {
+  rawBuffer: new CircularBuffer(config.maxBufferSize, config.baselineValue),
+  filteredBuffer: new CircularBuffer(config.maxBufferSize, 0),
+  filterState: {
+    highPass: { x: 0, y: 0 },
+    lowPass: { prev: 0 },
+    notch: { x: [0, 0], y: [0, 0] }
+  },
+  connection: {
+    ws: null,
+    connected: false,
+    samples: 0,
+    lastValues: []
+  },
+  canvas: null,
+  ctx: null,
+  offscreenCanvas: null,
+  offscreenCtx: null,
+  renderPending: false,
+  stats: {
+    min: config.baselineValue,
+    max: config.baselineValue,
+    avg: config.baselineValue,
+    range: 0
+  },
+  frequencyAnalysis: {
+    bands: {
+      delta: 0,
+      theta: 0,
+      alpha: 0,
+      beta: 0,
+      gamma: 0
+    },
+    dominant: 'None',
+    dominantValue: 0,
+    updateTime: 0
+  },
+  blinkDetection: {
+    enabled: true,
+    threshold: 800,          // Default threshold in µV
+    lastBlinkTime: 0,
+    blinkCount: 0,
+    inBlink: false,
+    cooldownPeriod: 500,     // Minimum time between blinks in ms
+    historyBuffer: new CircularBuffer(200, 0),  // Store recent signal for analysis
+    blinkEvents: []          // Array to store blink events with timestamps
+  }
+};
+
+// Filter functions
+const filters = {
+  // First-order high-pass filter
+  highPass(data, cutoff) {
+    if (!config.filters.highPass.enabled) return [...data];
+    
+    const alpha = 1 / (1 + 2*Math.PI * (cutoff / config.sampleRate));
+    const result = new Array(data.length);
+    
+    for (let i = 0; i < data.length; i++) {
+      // y[n] = alpha * (y[n-1] + x[n] - x[n-1])
+      state.filterState.highPass.y = alpha * (
+        state.filterState.highPass.y + 
+        data[i] - state.filterState.highPass.x
+      );
+      state.filterState.highPass.x = data[i];
+      result[i] = state.filterState.highPass.y;
+    }
+    
+    return result;
+  },
+  
+  // First-order low-pass filter
+  lowPass(data, cutoff) {
+    if (!config.filters.lowPass.enabled) return [...data];
+    
+    const dt = 1 / config.sampleRate;
+    const RC = 1 / (2 * Math.PI * cutoff);
+    const alpha = dt / (RC + dt);
+    const result = new Array(data.length);
+    
+    let prev = state.filterState.lowPass.prev;
+    
+    for (let i = 0; i < data.length; i++) {
+      // y[n] = y[n-1] + alpha * (x[n] - y[n-1])
+      prev = prev + alpha * (data[i] - prev);
+      result[i] = prev;
+    }
+    
+    state.filterState.lowPass.prev = prev;
+    return result;
+  },
+  
+  // Improved notch filter using IIR biquad
+  notch(data, notchFreq) {
+    if (!config.filters.notch.enabled) return [...data];
+    
+    const result = new Array(data.length);
+    const Q = 30; // Quality factor - higher = narrower
+    const w0 = 2 * Math.PI * notchFreq / config.sampleRate;
+    
+    // Calculate biquad filter coefficients
+    const alpha = Math.sin(w0) / (2 * Q);
+    
+    const b0 = 1;
+    const b1 = -2 * Math.cos(w0);
+    const b2 = 1;
+    const a0 = 1 + alpha;
+    const a1 = -2 * Math.cos(w0);
+    const a2 = 1 - alpha;
+    
+    // Normalize coefficients
+    const b0n = b0 / a0;
+    const b1n = b1 / a0;
+    const b2n = b2 / a0;
+    const a1n = a1 / a0;
+    const a2n = a2 / a0;
+    
+    // Get previous values from state
+    let x1 = state.filterState.notch.x[0];
+    let x2 = state.filterState.notch.x[1];
+    let y1 = state.filterState.notch.y[0];
+    let y2 = state.filterState.notch.y[1];
+    
+    // Apply filter
+    for (let i = 0; i < data.length; i++) {
+      const x0 = data[i];
+      
+      // Calculate output: y0 = b0*x0 + b1*x1 + b2*x2 - a1*y1 - a2*y2
+      const y0 = b0n * x0 + b1n * x1 + b2n * x2 - a1n * y1 - a2n * y2;
+      
+      result[i] = y0;
+      
+      // Update delay line
+      x2 = x1;
+      x1 = x0;
+      y2 = y1;
+      y1 = y0;
+    }
+    
+    // Store filter state
+    state.filterState.notch.x = [x1, x2];
+    state.filterState.notch.y = [y1, y2];
+    
+    return result;
+  },
+  
+  // Apply all filters in sequence
+  applyAll(data) {
+    // Apply filters in series
+    let result = this.highPass(data, config.filters.highPass.cutoff);
+    result = this.lowPass(result, config.filters.lowPass.cutoff);
+    result = this.notch(result, config.filters.notch.frequency);
+    
+    return result;
+  }
+};
+
+// Improved frequency analysis with better band power estimation
+function analyzeFrequencyContent(signal) {
+  if (signal.length < config.frequencyAnalysis.minDataPoints) return {
+    bands: { delta: 0, theta: 0, alpha: 0, beta: 0, gamma: 0 },
+    power: 0
+  };
+  
+  // Filter out blink periods if enabled
+  let cleanSignal = signal;
+  if (config.blinkDetection.enabled && config.blinkDetection.excludeFromAnalysis) {
+    cleanSignal = filterBlinkPeriods(signal);
+  }
+  
+  // If too much data was filtered due to blinks, return zeros
+  if (cleanSignal.length < config.frequencyAnalysis.minDataPoints) {
+    return {
+      bands: { delta: 0, theta: 0, alpha: 0, beta: 0, gamma: 0 },
+      power: 0
+    };
+  }
+  
+  // Use overlapping windows for better frequency resolution
+  const windowSize = Math.min(512, cleanSignal.length);
+  const overlap = Math.floor(windowSize / 2);
+  const numWindows = Math.floor((cleanSignal.length - windowSize) / overlap) + 1;
+  
+  // Band power accumulators
+  const result = {
+    delta: 0,   // 0.5-4 Hz
+    theta: 0,   // 4-8 Hz
+    alpha: 0,   // 8-13 Hz
+    beta: 0,    // 13-30 Hz
+    gamma: 0    // 30+ Hz
+  };
+  
+  // Create bandpass filters with different characteristics for each band
+  const filters = {
+    // Design simplified IIR band filters
+    // Returns relative power in different frequency bands
+    
+    // Delta: Compute low frequency energy (0.5-4Hz)
+    delta: function(window) {
+      let energy = 0;
+      for (let i = 30; i < window.length; i++) {
+        // Long differences capture slow waves
+        const diff = window[i] - window[i-30];
+        energy += diff * diff;
+      }
+      return energy;
+    },
+    
+    // Theta: 4-8Hz
+    theta: function(window) {
+      let energy = 0;
+      for (let i = 15; i < window.length; i++) {
+        const diff = window[i] - window[i-15];
+        energy += diff * diff;
+      }
+      return energy;
+    },
+    
+    // Alpha: 8-13Hz
+    alpha: function(window) {
+      let energy = 0;
+      for (let i = 8; i < window.length; i++) {
+        const diff = window[i] - window[i-8];
+        energy += diff * diff;
+      }
+      return energy;
+    },
+    
+    // Beta: 13-30Hz
+    beta: function(window) {
+      let energy = 0;
+      for (let i = 4; i < window.length; i++) {
+        const diff = window[i] - window[i-4];
+        energy += diff * diff;
+      }
+      return energy;
+    },
+    
+    // Gamma: 30+ Hz (fastest changes)
+    gamma: function(window) {
+      let energy = 0;
+      for (let i = 2; i < window.length; i++) {
+        const diff = window[i] - window[i-2];
+        energy += diff * diff;
+      }
+      return energy;
+    }
+  };
+  
+  let totalEnergy = 0;
+  
+  // Process each window
+  for (let w = 0; w < numWindows; w++) {
+    const start = w * overlap;
+    const end = start + windowSize;
+    const window = cleanSignal.slice(start, end);
+    
+    // Apply a windowing function to reduce spectral leakage (Hann window)
+    const windowedSignal = applyWindow(window);
+    
+    // Calculate band powers
+    result.delta += filters.delta(windowedSignal);
+    result.theta += filters.theta(windowedSignal);
+    result.alpha += filters.alpha(windowedSignal);
+    result.beta += filters.beta(windowedSignal);
+    result.gamma += filters.gamma(windowedSignal);
+    
+    // Calculate total energy (for normalization)
+    for (let i = 0; i < windowedSignal.length; i++) {
+      totalEnergy += windowedSignal[i] * windowedSignal[i];
+    }
+  }
+  
+  // Normalize band powers to percentages
+  const totalBandEnergy = Object.values(result).reduce((a, b) => a + b, 0);
+  if (totalBandEnergy > 0) {
+    for (const band in result) {
+      result[band] = (result[band] / totalBandEnergy * 100);
+    }
+  }
+  
+  return { 
+    bands: result, 
+    power: Math.sqrt(totalEnergy / numWindows)
+  };
+}
+
+// New function to filter out signal during blink periods
+function filterBlinkPeriods(signal) {
+  // If no blinks recorded, return original signal
+  if (state.blinkDetection.blinkEvents.length === 0) {
+    return signal;
+  }
+  
+  // Get current time
+  const now = Date.now();
+  
+  // Calculate sample times (assuming the signal ends at current time)
+  const sampleDurationMs = 1000 / config.sampleRate;
+  const signalDurationMs = signal.length * sampleDurationMs;
+  const startTimeMs = now - signalDurationMs;
+  
+  // Create a copy of signal to work with
+  let filteredSignal = [];
+  
+  // For each sample, check if it falls within a blink period
+  for (let i = 0; i < signal.length; i++) {
+    const sampleTimeMs = startTimeMs + (i * sampleDurationMs);
+    let withinBlink = false;
+    
+    // Check if sample time falls within any blink event
+    for (const blinkEvent of state.blinkDetection.blinkEvents) {
+      // Blink window = blink time to blink time + duration
+      if (sampleTimeMs >= blinkEvent.time && 
+          sampleTimeMs <= blinkEvent.time + config.blinkDetection.blinkDurationMs) {
+        withinBlink = true;
+        break;
+      }
+    }
+    
+    // Only include samples not during blinks
+    if (!withinBlink) {
+      filteredSignal.push(signal[i]);
+    }
+  }
+  
+  return filteredSignal;
+}
+
+// Apply Hann window to signal
+function applyWindow(signal) {
+  const windowed = new Array(signal.length);
+  
+  for (let i = 0; i < signal.length; i++) {
+    // Hann window: 0.5 * (1 - cos(2π * n / (N-1)))
+    const windowFactor = 0.5 * (1 - Math.cos(2 * Math.PI * i / (signal.length - 1)));
+    windowed[i] = signal[i] * windowFactor;
+  }
+  
+  return windowed;
+}
+
+// Calculate signal statistics
+function calculateStats(data) {
+  if (data.length === 0) return { min: 0, max: 0, avg: 0, range: 0 };
+  
+  let min = data[0];
+  let max = data[0];
+  let sum = 0;
+  
+  for (let i = 0; i < data.length; i++) {
+    min = Math.min(min, data[i]);
+    max = Math.max(max, data[i]);
+    sum += data[i];
+  }
+  
+  const avg = sum / data.length;
+  const range = max - min;
+  
+  return { min, max, avg, range };
+}
+
+// Initialize canvas with double buffering
+function initCanvas() {
+  // Main canvas (visible)
+  state.canvas = document.getElementById('eegCanvas');
+  state.ctx = state.canvas.getContext('2d');
+  
+  // Offscreen canvas (for double buffering)
+  state.offscreenCanvas = document.createElement('canvas');
+  state.offscreenCtx = state.offscreenCanvas.getContext('2d');
+  
+  // Set canvas size
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+}
+
+// Resize canvas when window size changes
+function resizeCanvas() {
+  if (!state.canvas || !state.offscreenCanvas) return;
+  
+  const container = state.canvas.parentElement;
+  state.canvas.width = container.clientWidth;
+  state.canvas.height = container.clientHeight;
+  
+  // Resize offscreen canvas to match
+  state.offscreenCanvas.width = state.canvas.width;
+  state.offscreenCanvas.height = state.canvas.height;
+  
+  // Redraw if we have data
+  if (state.connection.samples > 0) {
+    scheduleDraw();
+  }
+}
+
+// Schedule drawing to avoid too many redraws
+function scheduleDraw() {
+  if (state.renderPending) return;
+  
+  state.renderPending = true;
+  requestAnimationFrame(() => {
+    drawSignals();
+    state.renderPending = false;
+  });
+}
+
+// Draw signals using double buffering
+function drawSignals() {
+  if (!state.offscreenCtx || !state.ctx) return;
+  
+  const ctx = state.offscreenCtx; // Draw to offscreen canvas
+  const width = state.offscreenCanvas.width;
+  const height = state.offscreenCanvas.height;
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, width, height);
+  
+  // Draw background grid
+  drawGrid(ctx, width, height);
+  
+  // Draw time labels
+  drawTimeLabels(ctx, width, height);
+  
+  // Get display points based on current window size
+  const displayPoints = config.windowSeconds * config.sampleRate;
+  
+  // Get data to display
+  const rawData = state.rawBuffer.getLast(displayPoints);
+  const filteredData = state.filteredBuffer.getLast(displayPoints);
+  
+  // Skip if no data
+  if (rawData.length === 0) return;
+  
+  // Center the y-origin at 50% height
+  const centerY = height / 2;
+  
+  // Get Y scaling factor
+  const yScaleFactor = config.yScale;
+  
+  // Calculate scaling factors
+  const scaleX = width / displayPoints;
+  const scaleY = (-height / 4000) * yScaleFactor; // Adjust this for proper amplitude
+  
+  // Dynamic point skipping for optimization
+  const skipPoints = Math.max(1, Math.floor(rawData.length / (width * 2)));
+  
+  // Draw raw signal (gray line)
+  ctx.beginPath();
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--chart-raw-line');
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([2, 2]);
+  
+  let lastX = 0, lastY = 0;
+  for (let i = 0; i < rawData.length; i += skipPoints) {
+    const x = i * scaleX;
+    const y = centerY + (rawData[i] - config.baselineValue) * scaleY;
+    
+    // Skip drawing nearly identical vertical positions to optimize
+    if (i === 0 || Math.abs(y - lastY) > 0.5 || Math.abs(x - lastX) > 2) {
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+      lastX = x;
+      lastY = y;
+    }
+  }
+  
+  ctx.stroke();
+  
+  // Draw filtered signal (colored line)
+  ctx.beginPath();
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--chart-line');
+  ctx.lineWidth = 2;
+  ctx.setLineDash([]);
+  
+  lastX = 0;
+  lastY = 0;
+  
+  // Draw blink markers if enabled
+  const blinkThreshold = config.blinkDetection.threshold;
+  const markBlinks = config.blinkDetection.markBlinks && config.blinkDetection.enabled;
+  
+  for (let i = 0; i < filteredData.length; i += skipPoints) {
+    const x = i * scaleX;
+    const y = centerY + filteredData[i] * scaleY;
+    
+    // Skip drawing nearly identical vertical positions to optimize
+    if (i === 0 || Math.abs(y - lastY) > 0.5 || Math.abs(x - lastX) > 2) {
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+      lastX = x;
+      lastY = y;
+    }
+    
+    // Mark potential blink areas if enabled
+    if (markBlinks && Math.abs(filteredData[i]) > blinkThreshold) {
+      // Save current path
+      ctx.stroke();
+      
+      // Draw blink marker
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(255, 100, 100, 0.5)';
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Resume line drawing
+      ctx.beginPath();
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--chart-line');
+      ctx.moveTo(x, y);
+    }
+  }
+  
+  ctx.stroke();
+  
+  // Draw blink threshold lines if enabled
+  if (config.blinkDetection.enabled) {
+    // Convert threshold to pixels
+    const thresholdY = centerY + blinkThreshold * scaleY;
+    const negThresholdY = centerY - blinkThreshold * scaleY;
+    
+    // Draw threshold lines
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255, 100, 100, 0.5)';
+    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = 1;
+    
+    // Upper threshold
+    ctx.moveTo(0, thresholdY);
+    ctx.lineTo(width, thresholdY);
+    
+    // Lower threshold
+    ctx.moveTo(0, negThresholdY);
+    ctx.lineTo(width, negThresholdY);
+    
+    ctx.stroke();
+  }
+  
+  // Draw zero line
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1;
+  ctx.moveTo(0, centerY);
+  ctx.lineTo(width, centerY);
+  ctx.stroke();
+  
+  // Draw amplitude scale (μV)
+  drawAmplitudeScale(ctx, width, height, centerY, scaleY);
+  
+  // Copy offscreen canvas to visible canvas (double buffering)
+  state.ctx.clearRect(0, 0, width, height);
+  state.ctx.drawImage(state.offscreenCanvas, 0, 0);
+  
+  // Update debug info
+  updateDebugInfo(rawData, filteredData);
+}
+
+// Draw grid
+function drawGrid(ctx, width, height) {
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--chart-grid');
+  ctx.lineWidth = 1;
+  
+  // Draw horizontal lines
+  const hStep = height / 6;
+  for (let y = 0; y <= height; y += hStep) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+  
+  // Draw vertical lines (one per second)
+  const pixelsPerSecond = width / config.windowSeconds;
+  for (let i = 0; i <= config.windowSeconds; i++) {
+    const x = i * pixelsPerSecond;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+}
+
+// Draw time labels
+function drawTimeLabels(ctx, width, height) {
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary');
+  ctx.font = '10px Arial';
+  ctx.textAlign = 'center';
+  
+  // Draw second markers
+  const pixelsPerSecond = width / config.windowSeconds;
+  for (let i = 0; i <= config.windowSeconds; i++) {
+    const x = i * pixelsPerSecond;
+    const label = i === 0 ? `-${config.windowSeconds}s` : i === config.windowSeconds ? '0s' : `-${config.windowSeconds-i}s`;
+    ctx.fillText(label, x, height - 5);
+  }
+}
+
+// Draw amplitude scale
+function drawAmplitudeScale(ctx, width, height, centerY, scaleY) {
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary');
+  ctx.font = '10px Arial';
+  ctx.textAlign = 'left';
+  
+  // Draw scale lines at 500µV intervals
+  const scaleValues = [500, 250, 0, -250, -500];
+  
+  for (const value of scaleValues) {
+    const y = centerY + value * scaleY;
+    
+    // Draw small tick mark
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.moveTo(0, y);
+    ctx.lineTo(5, y);
+    ctx.stroke();
+    
+    // Draw label
+    ctx.fillText(`${value}µV`, 7, y + 4);
+  }
+}
+
+// Update debug information
+function updateDebugInfo(rawData, filteredData) {
+  if (rawData.length === 0) return;
+  
+  // Calculate signal statistics
+  const rawStats = calculateStats(rawData);
+  const centeredRawStats = calculateStats(rawData.map(v => v - config.baselineValue));
+  const filteredStats = calculateStats(filteredData);
+  
+  // Update state statistics
+  state.stats = {
+    raw: rawStats,
+    centered: centeredRawStats,
+    filtered: filteredStats
+  };
+  
+  // Show debug info
+  const debugInfo = document.getElementById('debugInfo');
+  if (!debugInfo) return;
+  
+  let info = 'Signal Stats:\n';
+  info += `Raw: min=${rawStats.min.toFixed(1)}, max=${rawStats.max.toFixed(1)}, avg=${rawStats.avg.toFixed(1)}, range=${rawStats.range.toFixed(1)}\n`;
+  info += `Centered: min=${centeredRawStats.min.toFixed(1)}, max=${centeredRawStats.max.toFixed(1)}, range=${centeredRawStats.range.toFixed(1)}\n`;
+  info += `Filtered: min=${filteredStats.min.toFixed(1)}, max=${filteredStats.max.toFixed(1)}, range=${filteredStats.range.toFixed(1)}\n`;
+  
+  // Add blink detection info
+  if (config.blinkDetection.enabled) {
+    const timeSinceLastBlink = Date.now() - state.blinkDetection.lastBlinkTime;
+    const seconds = (timeSinceLastBlink / 1000).toFixed(1);
+    info += `Blink detection: ON | Threshold: ${config.blinkDetection.threshold}µV | Last blink: ${seconds}s ago | Count: ${state.blinkDetection.blinkCount}\n`;
+    info += `Exclude blinks from analysis: ${config.blinkDetection.excludeFromAnalysis ? 'YES' : 'NO'}\n`;
+  } else {
+    info += `Blink detection: OFF\n`;
+  }
+  
+  info += `Frequency analysis interval: ${config.frequencyAnalysis.intervalMs}ms\n`;
+  info += `Last received values: ${state.connection.lastValues.join(', ')}`;
+  
+  debugInfo.innerText = info;
+}
+
+// Improved blink detection algorithm
+function detectBlinks(filteredData) {
+  if (!config.blinkDetection.enabled || filteredData.length === 0) return false;
+  
+  // Add data to blink history buffer
+  state.blinkDetection.historyBuffer.add(filteredData);
+  
+  // Check for blink conditions
+  const now = Date.now();
+  const cooldownElapsed = now - state.blinkDetection.lastBlinkTime > config.blinkDetection.cooldownMs;
+  
+  // Only analyze if we're not in cooldown
+  if (cooldownElapsed && !state.blinkDetection.inBlink) {
+    // Look for high amplitude peaks
+    const maxAmplitude = Math.max(...filteredData.map(Math.abs));
+    
+    // Check if peak exceeds threshold and we're not already in a blink
+    if (maxAmplitude > config.blinkDetection.threshold) {
+      // Blink detected
+      state.blinkDetection.inBlink = true;
+      state.blinkDetection.lastBlinkTime = now;
+      state.blinkDetection.blinkCount++;
+      
+      // Add blink event to history with timestamp
+      state.blinkDetection.blinkEvents.push({
+        time: now,
+        amplitude: maxAmplitude
+      });
+      
+      // Limit the number of stored blink events (keep last 50)
+      if (state.blinkDetection.blinkEvents.length > 50) {
+        state.blinkDetection.blinkEvents = state.blinkDetection.blinkEvents.slice(-50);
+      }
+      
+      // Trigger any custom actions on blink detection
+      if (typeof onBlinkDetected === 'function') {
+        onBlinkDetected(maxAmplitude);
+      }
+      
+      // Show blink indicator
+      const blinkIndicator = document.getElementById('blinkIndicator');
+      if (blinkIndicator) {
+        blinkIndicator.textContent = `Blink detected! (${state.blinkDetection.blinkCount} total)`;
+        blinkIndicator.classList.add('active');
+        
+        // Remove active class after animation
+        setTimeout(() => {
+          blinkIndicator.classList.remove('active');
+        }, 500);
+      }
+      
+      return true;
+    }
+  } else if (state.blinkDetection.inBlink) {
+    // Check if we're out of the blink (signal returned below threshold)
+    const recentAmplitude = Math.max(...filteredData.map(Math.abs));
+    if (recentAmplitude < config.blinkDetection.threshold * 0.5) {
+      // Reset blink state
+      state.blinkDetection.inBlink = false;
+    }
+  }
+  
+  return false;
+}
+
+// Update frequency analysis with increased interval
+function updateFrequencyAnalysis(signal) {
+  const now = Date.now();
+  
+  // Only update at the configured interval
+  if (now - state.frequencyAnalysis.updateTime < config.frequencyAnalysis.intervalMs) {
+    return;
+  }
+  
+  const analysis = analyzeFrequencyContent(signal);
+  
+  // Find dominant band
+  let dominant = 'None';
+  let dominantValue = 0;
+  
+  for (const band in analysis.bands) {
+    const power = analysis.bands[band];
+    if (power > dominantValue) {
+      dominantValue = power;
+      dominant = band.charAt(0).toUpperCase() + band.slice(1);
+    }
+    
+    // Update band display
+    const element = document.getElementById(`${band}Band`);
+    if (element) {
+      const valueElement = element.querySelector('.band-value');
+      if (valueElement) {
+        valueElement.textContent = `${power.toFixed(1)}%`;
+      }
+      
+      // Remove active class from all bands
+      element.classList.remove('active');
+    }
+  }
+  
+  // Highlight dominant band
+  const dominantElement = document.getElementById(`${dominant.toLowerCase()}Band`);
+  if (dominantElement) {
+    dominantElement.classList.add('active');
+  }
+  
+  // Update dominant band display
+  const dominantBandElement = document.getElementById('dominantBand');
+  if (dominantBandElement) {
+    dominantBandElement.textContent = `Dominant: ${dominant} (${dominantValue.toFixed(1)}%)`;
+  }
+  
+  // Store for later use
+  state.frequencyAnalysis.bands = analysis.bands;
+  state.frequencyAnalysis.dominant = dominant;
+  state.frequencyAnalysis.dominantValue = dominantValue;
+  state.frequencyAnalysis.updateTime = now;
+}
+
+// Process new data
+function processData(newData) {
+  // Store some samples for debugging
+  state.connection.lastValues = newData.slice(-5);
+  
+  // Store raw data
+  state.rawBuffer.add(newData);
+  
+  // Center data
+  const centeredData = newData.map(v => v - config.baselineValue);
+  
+  // Apply filters
+  const filteredData = filters.applyAll(centeredData);
+  
+  // Check for blinks before adding to buffer (to catch them in real-time)
+  const blinkDetected = detectBlinks(filteredData);
+  
+  // Store filtered data
+  state.filteredBuffer.add(filteredData);
+  
+  // Schedule drawing
+  scheduleDraw();
+  
+  // Update frequency analysis occasionally
+  const allFilteredData = state.filteredBuffer.getLast(config.windowSeconds * config.sampleRate);
+  if (allFilteredData.length > 0) {
+    updateFrequencyAnalysis(allFilteredData);
+  }
+}
+
+// Connect to WebSocket
+function connect() {
+  const serverAddress = document.getElementById('serverAddress').value;
+  
+  if (!serverAddress) {
+    alert('Please enter the ESP32 IP address');
+    return;
+  }
+  
+  // Save IP to localStorage
+  localStorage.setItem('eegServerIP', serverAddress);
+  
+  connectToAddress(serverAddress);
+}
+
+// Connect to specific address
+function connectToAddress(address) {
+  // Close existing connection if any
+  if (state.connection.ws) {
+    state.connection.ws.close();
+  }
+  
+  // Reset buffers when connecting
+  state.rawBuffer.clear(config.baselineValue);
+  state.filteredBuffer.clear(0);
+  state.connection.samples = 0;
+  state.connection.lastValues = [];
+  
+  // Reset blink events when connecting
+  state.blinkDetection.blinkEvents = [];
+  state.blinkDetection.blinkCount = 0;
+  state.blinkDetection.lastBlinkTime = 0;
+  state.blinkDetection.inBlink = false;
+  
+  // Create new WebSocket connection
+  state.connection.ws = new WebSocket(`ws://${address}:81`);
+  
+  state.connection.ws.onopen = () => {
+    console.log('WebSocket connected');
+    state.connection.connected = true;
+    updateConnectionStatus(true);
+  };
+  
+  state.connection.ws.onclose = () => {
+    console.log('WebSocket disconnected');
+    state.connection.connected = false;
+    updateConnectionStatus(false);
+  };
+  
+  state.connection.ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+    state.connection.connected = false;
+    updateConnectionStatus(false);
+    
+    const autoConnectStatus = document.getElementById('autoConnectStatus');
+    if (autoConnectStatus) {
+      autoConnectStatus.textContent = `Connection to ${address} failed.`;
+      autoConnectStatus.style.color = getComputedStyle(document.documentElement).getPropertyValue('--status-disconnected');
+    }
+  };
+  
+  state.connection.ws.onmessage = (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      
+      if (message.type === 'data') {
+        // Update samples count
+        state.connection.samples += message.count || 1;
+        
+        // Process EEG data (channel 1)
+        if (message.a1 && message.a1.length > 0) {
+          processData(message.a1);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing message:', error);
+    }
+  };
+}
+
+// Auto-connect to saved IP
+function autoConnect() {
+  const savedIP = localStorage.getItem('eegServerIP');
+  
+  if (savedIP) {
+    const serverAddressInput = document.getElementById('serverAddress');
+    if (serverAddressInput) {
+      serverAddressInput.value = savedIP;
+    }
+    
+    const autoConnectStatus = document.getElementById('autoConnectStatus');
+    if (autoConnectStatus) {
+      autoConnectStatus.textContent = `Auto-connecting to ${savedIP}...`;
+      autoConnectStatus.style.color = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary');
+    }
+    
+    // Slight delay to show the message
+    setTimeout(() => {
+      connectToAddress(savedIP);
+    }, 500);
+    
+    return true;
+  }
+  
+  return false;
+}
+
+// Disconnect WebSocket
+function disconnect() {
+  if (state.connection.ws) {
+    state.connection.ws.close();
+  }
+}
+
+// Update connection status UI
+function updateConnectionStatus(connected) {
+  const statusIndicator = document.getElementById('statusIndicator');
+  const statusText = document.getElementById('connectionStatus');
+  const autoConnectStatus = document.getElementById('autoConnectStatus');
+  
+  if (statusIndicator) {
+    statusIndicator.className = connected ? 'status-indicator connected' : 'status-indicator disconnected';
+  }
+  
+  if (statusText) {
+    statusText.textContent = connected ? 'Connected' : 'Disconnected';
+  }
+  
+  if (autoConnectStatus) {
+    if (connected) {
+      const serverAddress = document.getElementById('serverAddress');
+      autoConnectStatus.textContent = `Connected to ${serverAddress ? serverAddress.value : ''}`;
+      autoConnectStatus.style.color = getComputedStyle(document.documentElement).getPropertyValue('--status-connected');
+    }
+  }
+  
+  const connectButton = document.getElementById('connectButton');
+  const disconnectButton = document.getElementById('disconnectButton');
+  
+  if (connectButton) {
+    connectButton.disabled = connected;
+  }
+  
+  if (disconnectButton) {
+    disconnectButton.disabled = !connected;
+  }
+}
+
+// Update filter settings
+function updateFilters() {
+  // Get values from UI
+  const highPassEnabled = document.getElementById('highPass');
+  const lowPassEnabled = document.getElementById('lowPass');
+  const notchEnabled = document.getElementById('notch');
+  const highPassCutoff = document.getElementById('highPassCutoff');
+  const lowPassCutoff = document.getElementById('lowPassCutoff');
+  const notchFreq = document.getElementById('notchFreq');
+  
+  if (highPassEnabled) config.filters.highPass.enabled = highPassEnabled.checked;
+  if (lowPassEnabled) config.filters.lowPass.enabled = lowPassEnabled.checked;
+  if (notchEnabled) config.filters.notch.enabled = notchEnabled.checked;
+  
+  if (highPassCutoff) config.filters.highPass.cutoff = parseFloat(highPassCutoff.value);
+  if (lowPassCutoff) config.filters.lowPass.cutoff = parseFloat(lowPassCutoff.value);
+  if (notchFreq) config.filters.notch.frequency = parseFloat(notchFreq.value);
+  
+  // Reset filter state
+  state.filterState = {
+    highPass: { x: 0, y: 0 },
+    lowPass: { prev: 0 },
+    notch: { x: [0, 0], y: [0, 0] }
+  };
+  
+  // Save to localStorage
+  localStorage.setItem('eegFilters', JSON.stringify(config.filters));
+  
+  // Reprocess data with new filters
+  reprocessData();
+}
+
+// Reprocess all data with current filter settings
+function reprocessData() {
+  const rawData = state.rawBuffer.getAll();
+  if (rawData.length === 0) return;
+  
+  // Clear filtered buffer
+  state.filteredBuffer.clear(0);
+  state.filteredBuffer.resize(state.rawBuffer.size, 0);
+  
+  // Center and filter all data
+  const centeredData = rawData.map(v => v - config.baselineValue);
+  const filteredData = filters.applyAll(centeredData);
+  
+  // Add to filtered buffer
+  state.filteredBuffer.add(filteredData);
+  
+  // Update display
+  scheduleDraw();
+  
+  // Update frequency analysis
+  const displayData = state.filteredBuffer.getLast(config.windowSeconds * config.sampleRate);
+  if (displayData.length > 0) {
+    updateFrequencyAnalysis(displayData);
+  }
+}
+
+// Update Y scale
+function updateYScale() {
+  const yScaleEl = document.getElementById('yScale');
+  const yScaleValueEl = document.getElementById('yScaleValue');
+  
+  if (yScaleEl) {
+    config.yScale = parseInt(yScaleEl.value);
+    
+    if (yScaleValueEl) {
+      yScaleValueEl.textContent = config.yScale + 'x';
+    }
+    
+    // Save to localStorage
+    localStorage.setItem('eegYScale', config.yScale);
+    
+    // Redraw
+    scheduleDraw();
+  }
+}
+
+// Update X scale (time window)
+function updateXScale() {
+  const xScaleEl = document.getElementById('xScale');
+  const xScaleValueEl = document.getElementById('xScaleValue');
+  
+  if (xScaleEl) {
+    const prevSeconds = config.windowSeconds;
+    config.windowSeconds = parseInt(xScaleEl.value);
+    
+    if (xScaleValueEl) {
+      xScaleValueEl.textContent = config.windowSeconds + 's';
+    }
+    
+    // Save to localStorage
+    localStorage.setItem('eegXScale', config.windowSeconds);
+    
+    // Update frequency analysis
+    const filteredData = state.filteredBuffer.getLast(config.windowSeconds * config.sampleRate);
+    if (filteredData.length > 0) {
+      updateFrequencyAnalysis(filteredData);
+    }
+    
+    // Redraw
+    scheduleDraw();
+  }
+}
+
+// Update blink detection settings
+function updateBlinkDetection() {
+  const blinkDetectionEl = document.getElementById('blinkDetection');
+  const blinkThresholdEl = document.getElementById('blinkThreshold');
+  const excludeBlinksEl = document.getElementById('excludeBlinks');
+  
+  if (blinkDetectionEl) {
+    config.blinkDetection.enabled = blinkDetectionEl.checked;
+  }
+  
+  if (blinkThresholdEl) {
+    config.blinkDetection.threshold = parseInt(blinkThresholdEl.value);
+  }
+  
+  if (excludeBlinksEl) {
+    config.blinkDetection.excludeFromAnalysis = excludeBlinksEl.checked;
+  }
+  
+  // Save to localStorage
+  localStorage.setItem('eegBlinkDetection', JSON.stringify({
+    enabled: config.blinkDetection.enabled,
+    threshold: config.blinkDetection.threshold,
+    excludeFromAnalysis: config.blinkDetection.excludeFromAnalysis
+  }));
+  
+  // Reset blink state
+  state.blinkDetection.inBlink = false;
+  
+  // Update the UI
+  const blinkIndicator = document.getElementById('blinkIndicator');
+  if (blinkIndicator) {
+    if (config.blinkDetection.enabled) {
+      blinkIndicator.textContent = `Blink detection active (${state.blinkDetection.blinkCount} total)`;
+    } else {
+      blinkIndicator.textContent = 'Blink detection disabled';
+      blinkIndicator.classList.remove('active');
+    }
+  }
+  
+  // Redraw to update threshold lines
+  scheduleDraw();
+}
+
+// Custom callback function for blink detection
+// This can be defined by the user to trigger external actions
+function onBlinkDetected(amplitude) {
+  // Default implementation - can be overridden
+  console.log(`Blink detected with amplitude: ${amplitude.toFixed(2)}µV`);
+  
+  // Example of how to use this for other purposes:
+  // - Control external devices
+  // - Trigger UI actions
+  // - Log events
+}
+
+// Load settings from localStorage
+function loadSettings() {
+  // Load filters
+  try {
+    const savedFilters = localStorage.getItem('eegFilters');
+    if (savedFilters) {
+      const filters = JSON.parse(savedFilters);
+      
+      // Update config
+      Object.assign(config.filters, filters);
+      
+      // Update UI
+      const highPass = document.getElementById('highPass');
+      const highPassCutoff = document.getElementById('highPassCutoff');
+      const lowPass = document.getElementById('lowPass');
+      const lowPassCutoff = document.getElementById('lowPassCutoff');
+      const notch = document.getElementById('notch');
+      const notchFreq = document.getElementById('notchFreq');
+      
+      if (highPass) highPass.checked = config.filters.highPass.enabled;
+      if (highPassCutoff) highPassCutoff.value = config.filters.highPass.cutoff;
+      if (lowPass) lowPass.checked = config.filters.lowPass.enabled;
+      if (lowPassCutoff) lowPassCutoff.value = config.filters.lowPass.cutoff;
+      if (notch) notch.checked = config.filters.notch.enabled;
+      if (notchFreq) notchFreq.value = config.filters.notch.frequency;
+    }
+  } catch (e) {
+    console.error('Error loading filters:', e);
+  }
+  
+  // Load Y scale
+  const savedYScale = localStorage.getItem('eegYScale');
+  if (savedYScale) {
+    config.yScale = parseInt(savedYScale);
+    const yScale = document.getElementById('yScale');
+    const yScaleValue = document.getElementById('yScaleValue');
+    
+    if (yScale) yScale.value = config.yScale;
+    if (yScaleValue) yScaleValue.textContent = config.yScale + 'x';
+  }
+  
+  // Load X scale (time window)
+  const savedXScale = localStorage.getItem('eegXScale');
+  if (savedXScale) {
+    config.windowSeconds = parseInt(savedXScale);
+    const xScale = document.getElementById('xScale');
+    const xScaleValue = document.getElementById('xScaleValue');
+    
+    if (xScale) xScale.value = config.windowSeconds;
+    if (xScaleValue) xScaleValue.textContent = config.windowSeconds + 's';
+  }
+  
+  // Load blink detection settings
+  try {
+    const savedBlinkDetection = localStorage.getItem('eegBlinkDetection');
+    if (savedBlinkDetection) {
+      const blinkSettings = JSON.parse(savedBlinkDetection);
+      
+      // Update config
+      Object.assign(config.blinkDetection, blinkSettings);
+      
+      // Update UI
+      const blinkDetection = document.getElementById('blinkDetection');
+      const blinkThreshold = document.getElementById('blinkThreshold');
+      const excludeBlinks = document.getElementById('excludeBlinks');
+      
+      if (blinkDetection) blinkDetection.checked = config.blinkDetection.enabled;
+      if (blinkThreshold) blinkThreshold.value = config.blinkDetection.threshold;
+      if (excludeBlinks) excludeBlinks.checked = config.blinkDetection.excludeFromAnalysis !== false;
+    }
+  } catch (e) {
+    console.error('Error loading blink detection settings:', e);
+  }
+  
+  // Load frequency analysis interval
+  try {
+    const savedFrequencyInterval = localStorage.getItem('eegFrequencyInterval');
+    if (savedFrequencyInterval) {
+      config.frequencyAnalysis.intervalMs = parseInt(savedFrequencyInterval);
+    }
+  } catch (e) {
+    console.error('Error loading frequency analysis interval:', e);
+  }
+}
+
+// Initialize app with UI elements for blink exclusion
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialize canvas
+  initCanvas();
+  
+  // Load settings
+  loadSettings();
+  
+  // Set up event listeners for all UI controls
+  const connectButton = document.getElementById('connectButton');
+  const disconnectButton = document.getElementById('disconnectButton');
+  
+  if (connectButton) connectButton.addEventListener('click', connect);
+  if (disconnectButton) disconnectButton.addEventListener('click', disconnect);
+  
+  // Filter controls
+  const highPass = document.getElementById('highPass');
+  const lowPass = document.getElementById('lowPass');
+  const notch = document.getElementById('notch');
+  const highPassCutoff = document.getElementById('highPassCutoff');
+  const lowPassCutoff = document.getElementById('lowPassCutoff');
+  const notchFreq = document.getElementById('notchFreq');
+  
+  if (highPass) highPass.addEventListener('change', updateFilters);
+  if (lowPass) lowPass.addEventListener('change', updateFilters);
+  if (notch) notch.addEventListener('change', updateFilters);
+  if (highPassCutoff) highPassCutoff.addEventListener('change', updateFilters);
+  if (lowPassCutoff) lowPassCutoff.addEventListener('change', updateFilters);
+  if (notchFreq) notchFreq.addEventListener('change', updateFilters);
+  
+  // Blink detection controls
+  const blinkDetection = document.getElementById('blinkDetection');
+  const blinkThreshold = document.getElementById('blinkThreshold');
+  
+  if (blinkDetection) blinkDetection.addEventListener('change', updateBlinkDetection);
+  if (blinkThreshold) blinkThreshold.addEventListener('change', updateBlinkDetection);
+  
+  // Add event listener for exclude blinks checkbox if it exists
+  const excludeBlinksElement = document.getElementById('excludeBlinks');
+  if (excludeBlinksElement) {
+    excludeBlinksElement.addEventListener('change', updateBlinkDetection);
+  } else {
+    // If the element doesn't exist yet, try to add it to the DOM
+    try {
+      const blinkDetectionContainer = document.getElementById('blinkThreshold').parentElement;
+      if (blinkDetectionContainer) {
+        const excludeBlinkLabel = document.createElement('div');
+        excludeBlinkLabel.className = 'control-group';
+        excludeBlinkLabel.innerHTML = `
+          <label for="excludeBlinks">
+            <input type="checkbox" id="excludeBlinks" ${config.blinkDetection.excludeFromAnalysis ? 'checked' : ''}>
+            Exclude blinks from frequency analysis
+          </label>
+        `;
+        blinkDetectionContainer.appendChild(excludeBlinkLabel);
+        
+        // Add event listener to newly created element
+        document.getElementById('excludeBlinks').addEventListener('change', updateBlinkDetection);
+      }
+    } catch (e) {
+      console.error('Could not add excludeBlinks control:', e);
+    }
+  }
+  
+  // Scale controls
+  const yScale = document.getElementById('yScale');
+  const xScale = document.getElementById('xScale');
+  
+  if (yScale) yScale.addEventListener('input', updateYScale);
+  if (xScale) xScale.addEventListener('input', updateXScale);
+  
+  // Initialize blink indicator
+  const blinkIndicator = document.getElementById('blinkIndicator');
+  if (blinkIndicator) {
+    if (config.blinkDetection.enabled) {
+      blinkIndicator.textContent = 'Blink detection active (0 total)';
+    } else {
+      blinkIndicator.textContent = 'Blink detection disabled';
+    }
+  }
+  
+  // Auto-connect
+  autoConnect();
+});
+    </script>
+</body>
+</html>
